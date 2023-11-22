@@ -12,7 +12,7 @@ compile_error!("`decimal` and `decimal_float` are mutually exclusive feature fla
 
 use std::{mem, ops::Deref};
 
-use component::schema::Schema;
+use component::schema::{GenericSchema, Schema};
 use doc_comment::CommentAttributes;
 
 use component::into_params::IntoParams;
@@ -636,9 +636,13 @@ pub fn derive_to_schema(input: TokenStream) -> TokenStream {
         vis,
     } = syn::parse_macro_input!(input);
 
-    let schema = Schema::new(&data, &attrs, &ident, &generics, &vis);
-
-    schema.to_token_stream().into()
+    if generics.type_params().count() > 0 {
+        GenericSchema::new(&data, &attrs, &ident, &generics, &vis)
+            .to_token_stream()
+            .into()
+    } else {
+        Schema::new(&data, &attrs, &ident).to_token_stream().into()
+    }
 }
 
 #[proc_macro_error]

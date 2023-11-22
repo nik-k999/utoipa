@@ -43,14 +43,86 @@ pub mod xml;
 pub struct Schema<'a> {
     ident: &'a Ident,
     attributes: &'a [Attribute],
+    data: &'a Data,
+}
+
+impl<'a> Schema<'a> {
+    const TO_SCHEMA_LIFETIME: &'static str = "'__s";
+    pub fn new(
+        data: &'a Data,
+        attributes: &'a [Attribute],
+        ident: &'a Ident,
+    ) -> Self {
+
+        Self {
+            data,
+            ident,
+            attributes,
+        }
+    }
+}
+
+impl ToTokens for Schema<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ident = self.ident;
+        let variant = SchemaVariant::new(
+            self.data,
+            self.attributes,
+            ident,
+            None, 
+            None::<Vec<(TypeTree, &TypeTree)>>,
+        );
+
+        // was here for alias
+        // let (_, ty_generics, where_clause) = self.generics.split_for_impl();
+
+        let life = &Lifetime::new(Schema::TO_SCHEMA_LIFETIME, Span::call_site());
+
+        // was here for alias
+        // let schema_ty: Type = parse_quote!(#ident #ty_generics);
+        // was here for alias
+        // let schema_children = &*TypeTree::from_type(&schema_ty).children.unwrap_or_default();
+
+        let name = if let Some(schema_as) = variant.get_schema_as() {
+            format_path_ref(&schema_as.0.path)
+        } else {
+            ident.to_string()
+        };
+
+        // was here for alias
+        // let schema_lifetime: GenericParam = LifetimeParam::new(life.clone()).into();
+        // was here for alias
+        // let schema_generics = Generics {
+        //     params: [schema_lifetime.clone()].into_iter().collect(),
+        //     ..Default::default()
+        // };
+
+        // was here for alias
+        // let mut impl_generics = self.generics.clone();
+        // impl_generics.params.push(schema_lifetime);
+        // was here for alias
+        // let (impl_generics, _, _) = impl_generics.split_for_impl();
+
+        tokens.extend(quote! {
+            impl #life utoipa::ToSchema #life for #ident {
+                fn schema() -> (& #life str, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>) {
+                    (#name, #variant.into())
+                }
+            }
+        })
+    }
+}
+
+pub struct GenericSchema<'a> {
+    ident: &'a Ident,
+    attributes: &'a [Attribute],
     generics: &'a Generics,
     aliases: Option<Punctuated<AliasSchema, Comma>>,
     data: &'a Data,
     vis: &'a Visibility,
 }
 
-impl<'a> Schema<'a> {
-    const TO_SCHEMA_LIFETIME: &'static str = "'__s";
+impl<'a> GenericSchema<'a> {
     pub fn new(
         data: &'a Data,
         attributes: &'a [Attribute],
@@ -63,7 +135,6 @@ impl<'a> Schema<'a> {
         } else {
             None
         };
-
         Self {
             data,
             ident,
@@ -75,50 +146,14 @@ impl<'a> Schema<'a> {
     }
 }
 
-impl ToTokens for Schema<'_> {
+impl ToTokens for GenericSchema<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ident = self.ident;
-        let variant = SchemaVariant::new(
-            self.data,
-            self.attributes,
-            ident,
-            self.generics,
-            None::<Vec<(TypeTree, &TypeTree)>>,
-        );
-
-        let (_, ty_generics, where_clause) = self.generics.split_for_impl();
-
+        let schema = quote! {};
         let life = &Lifetime::new(Schema::TO_SCHEMA_LIFETIME, Span::call_site());
-
-        let schema_ty: Type = parse_quote!(#ident #ty_generics);
-        let schema_children = &*TypeTree::from_type(&schema_ty).children.unwrap_or_default();
-
-        let aliases = self.aliases.as_ref().map(|aliases| {
-            let alias_schemas = aliases
-                .iter()
-                .map(|alias| {
-                    let name = &*alias.name;
-                    let alias_type_tree = TypeTree::from_type(&alias.ty);
-
-                    let variant = SchemaVariant::new(
-                        self.data,
-                        self.attributes,
-                        ident,
-                        self.generics,
-                        alias_type_tree
-                            .children
-                            .map(|children| children.into_iter().zip(schema_children)),
-                    );
-                    quote! { (#name, #variant.into()) }
-                })
-                .collect::<Array<TokenStream>>();
-
-            quote! {
-                fn aliases() -> Vec<(& #life str, utoipa::openapi::schema::Schema)> {
-                    #alias_schemas.to_vec()
-                }
-            }
-        });
+        let impl_generics = quote! {};
+        let schema_generics = quote! {};
+        let ty_generics = quote! {};
 
         let type_aliases = self.aliases.as_ref().map(|aliases| {
             aliases
@@ -142,33 +177,32 @@ impl ToTokens for Schema<'_> {
                 .collect::<TokenStream>()
         });
 
-        let name = if let Some(schema_as) = variant.get_schema_as() {
-            format_path_ref(&schema_as.0.path)
-        } else {
-            ident.to_string()
-        };
-
-        let schema_lifetime: GenericParam = LifetimeParam::new(life.clone()).into();
-        let schema_generics = Generics {
-            params: [schema_lifetime.clone()].into_iter().collect(),
-            ..Default::default()
-        };
-
-        let mut impl_generics = self.generics.clone();
-        impl_generics.params.push(schema_lifetime);
-        let (impl_generics, _, _) = impl_generics.split_for_impl();
-
         tokens.extend(quote! {
-            impl #impl_generics utoipa::ToSchema #schema_generics for #ident #ty_generics #where_clause {
-                fn schema() -> (& #life str, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>) {
-                    (#name, #variant.into())
+            impl #impl_generics utoipa::ToGenricSchema #schema_generics for #ident #ty_generics {
+                fn build_schema(mut generic_properties: HashMap<&'__s str, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>) -> utoipa::openapi::schema::Schema {
+                    #schema
                 }
-
-                #aliases
             }
 
             #type_aliases
-        })
+        });
+
+        if let Some(aliases) = self.aliases.as_ref() { 
+            aliases.iter().for_each(|alias| {
+                let build_schema_hashmap = quote! {};
+                let name = &*alias.name;
+                let alias_type = quote! {};
+
+                tokens.extend(quote! {
+                    impl #life utoipa::ToSchema #life for #ident #alias_type {
+                        fn schema() -> (& #life str, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>) {
+                            (#name, Self::build_schema(#build_schema_hashmap).into())
+                        }
+                    }
+                });
+            
+            }); 
+        }
     }
 }
 
@@ -185,7 +219,7 @@ impl<'a> SchemaVariant<'a> {
         data: &'a Data,
         attributes: &'a [Attribute],
         ident: &'a Ident,
-        generics: &'a Generics,
+        generics: Option<&'a Generics>,
         aliases: Option<I>,
     ) -> SchemaVariant<'a> {
         match data {
@@ -218,7 +252,7 @@ impl<'a> SchemaVariant<'a> {
                         rename_all: named_features.pop_rename_all_feature(),
                         features: named_features,
                         fields: named,
-                        generics: Some(generics),
+                        generics,
                         schema_as,
                         aliases: aliases.map(|aliases| aliases.into_iter().collect()),
                     })
@@ -297,6 +331,8 @@ impl NamedStructSchema<'_> {
         yield_: impl FnOnce(NamedStructFieldOptions<'_>) -> R,
     ) -> R {
         let type_tree = &mut TypeTree::from_type(&field.ty);
+
+        // Override type tree if it is a generic type
         if let Some(aliases) = &self.aliases {
             for (new_generic, old_generic_matcher) in aliases.iter() {
                 if let Some(generic_match) = type_tree.find_mut(old_generic_matcher) {

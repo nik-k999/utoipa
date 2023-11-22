@@ -399,6 +399,14 @@ pub trait ToSchema<'__s> {
     }
 }
 
+pub trait ToGenricSchema<'__s> {
+    fn schema(
+        generic_properties: HashMap<&'__s str, openapi::RefOr<openapi::schema::Schema>>,
+    ) -> openapi::schema::Schema;
+
+    fn keys_of_generic_properties() -> Vec<&'__s str>;
+}
+
 impl<'__s, T: ToSchema<'__s>> From<T> for openapi::RefOr<openapi::schema::Schema> {
     fn from(_: T) -> Self {
         T::schema().1
